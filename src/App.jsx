@@ -12,6 +12,8 @@ import GalleryPage from "./components/user/GalleryPage";
 import ActivitiesPage from "./components/user/ActivitiesPage";
 import TrendsPage from "./components/user/TrendsPage";
 import MapPage from "./components/user/MapPage";
+import ProfileSettingsPage from "./components/user/ProfileSettingsPage";
+import ReportPage from "./components/user/ReportPage";
 
 function App() {
   const [activeModal, setActiveModal] = useState(null);
@@ -60,6 +62,10 @@ function App() {
         return <TrendsPage />;
       case "map":
         return <MapPage />;
+      case "profile-settings":
+        return <ProfileSettingsPage />;
+      case "report":
+        return <ReportPage />;
       case "landing":
       default:
         return <LandingPage />;

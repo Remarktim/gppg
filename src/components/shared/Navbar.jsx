@@ -231,6 +231,11 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         </li>
                         <li>
                           <a
+                            onClick={(e) => {
+                              e.preventDefault();
+                              navigateTo("profile-settings");
+                              setIsUserMenuOpen(false);
+                            }}
                             className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}
                             href="#">
                             Profile Settings
@@ -238,11 +243,17 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         </li>
                         <li>
                           <a
+                            onClick={(e) => {
+                              e.preventDefault();
+                              navigateTo("report");
+                              setIsUserMenuOpen(false);
+                            }}
                             className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}
                             href="#">
-                            My Recordings
+                            Report
                           </a>
                         </li>
+
                         <li>
                           <hr className={`my-1 ${isScrolled ? "border-gray-200" : "border-white/20"}`} />
                         </li>
