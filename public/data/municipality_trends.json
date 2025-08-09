@@ -1,0 +1,70 @@
+{
+  "puerto princesa": {
+    "alive": [
+      { "date": "2025-01", "value": 8 },
+      { "date": "2025-02", "value": 12 },
+      { "date": "2025-03", "value": 10 },
+      { "date": "2025-04", "value": 14 },
+      { "date": "2025-05", "value": 16 },
+      { "date": "2025-06", "value": 13 }
+    ],
+    "dead": [
+      { "date": "2025-01", "value": 1 },
+      { "date": "2025-02", "value": 0 },
+      { "date": "2025-03", "value": 2 },
+      { "date": "2025-04", "value": 1 },
+      { "date": "2025-05", "value": 1 },
+      { "date": "2025-06", "value": 1 }
+    ],
+    "illegalTrades": [
+      { "date": "2025-01", "value": 0 },
+      { "date": "2025-02", "value": 1 },
+      { "date": "2025-03", "value": 0 },
+      { "date": "2025-04", "value": 0 },
+      { "date": "2025-05", "value": 1 },
+      { "date": "2025-06", "value": 1 }
+    ],
+    "poaching": [
+      { "date": "2025-01", "value": 1 },
+      { "date": "2025-02", "value": 2 },
+      { "date": "2025-03", "value": 1 },
+      { "date": "2025-04", "value": 2 },
+      { "date": "2025-05", "value": 3 },
+      { "date": "2025-06", "value": 2 }
+    ]
+  },
+  "roxas": {
+    "alive": [
+      { "date": "2025-01", "value": 2 },
+      { "date": "2025-02", "value": 1 },
+      { "date": "2025-03", "value": 3 },
+      { "date": "2025-04", "value": 4 },
+      { "date": "2025-05", "value": 5 },
+      { "date": "2025-06", "value": 4 }
+    ],
+    "dead": [
+      { "date": "2025-01", "value": 0 },
+      { "date": "2025-02", "value": 0 },
+      { "date": "2025-03", "value": 1 },
+      { "date": "2025-04", "value": 0 },
+      { "date": "2025-05", "value": 0 },
+      { "date": "2025-06", "value": 0 }
+    ],
+    "illegalTrades": [
+      { "date": "2025-01", "value": 0 },
+      { "date": "2025-02", "value": 0 },
+      { "date": "2025-03", "value": 0 },
+      { "date": "2025-04", "value": 0 },
+      { "date": "2025-05", "value": 0 },
+      { "date": "2025-06", "value": 0 }
+    ],
+    "poaching": [
+      { "date": "2025-01", "value": 0 },
+      { "date": "2025-02", "value": 1 },
+      { "date": "2025-03", "value": 0 },
+      { "date": "2025-04", "value": 1 },
+      { "date": "2025-05", "value": 0 },
+      { "date": "2025-06", "value": 0 }
+    ]
+  }
+}

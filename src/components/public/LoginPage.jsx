@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes, FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
+import { FaTimes, FaEye, FaEyeSlash, FaGoogle, FaExclamationTriangle } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
 import logo from "../../assets/img/logo.jpg";
+import { authService, validateEmail } from "../../lib/supabase";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -24,6 +25,8 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -31,42 +34,93 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
       ...prev,
       [name]: value,
     }));
+
+    // Clear field-specific errors when user starts typing
+    if (fieldErrors[name]) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [name]: "",
+      }));
+    }
+
+    // Clear general error
+    if (error) setError("");
+  };
+
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.email.trim()) {
+      errors.email = "Email is required";
+    } else if (!validateEmail(formData.email)) {
+      errors.email = "Please enter a valid email address";
+    }
+
+    if (!formData.password.trim()) {
+      errors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      errors.password = "Password must be at least 6 characters";
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
+    setError("");
 
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // In a real app, you would validate credentials with your backend
-    // For now, we'll simulate a successful login for any email/password combination
-    if (formData.email && formData.password) {
-      const userData = {
-        id: 1,
-        email: formData.email,
-        name: formData.email.split("@")[0], // Use email username as display name
-        role: "user",
-      };
-
-      onLogin(userData);
-    } else {
-      alert("Please fill in all fields");
+    if (!validateForm()) {
+      return;
     }
 
-    setIsLoading(false);
+    setIsLoading(true);
+
+    try {
+      const { data, error: authError } = await authService.signIn(formData.email, formData.password);
+
+      if (authError) {
+        setError(authError);
+        return;
+      }
+
+      if (data?.user) {
+        const userData = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.user_metadata?.full_name || data.user.email.split("@")[0],
+          role: data.user.user_metadata?.role || "user",
+          avatar: data.user.user_metadata?.avatar_url,
+        };
+
+        onLogin(userData);
+        onClose();
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Login error:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleSignIn = () => {
-    // Simulate Google sign-in
-    const userData = {
-      id: 1,
-      email: "user@google.com",
-      name: "Google User",
-      role: "user",
-    };
-    onLogin(userData);
+  const handleGoogleSignIn = async () => {
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const { error: authError } = await authService.signInWithGoogle();
+
+      if (authError) {
+        setError(authError);
+      }
+      // Note: Google OAuth will redirect, so we don't handle success here
+    } catch (err) {
+      setError("Failed to sign in with Google. Please try again.");
+      console.error("Google sign-in error:", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -111,11 +165,22 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
               </div>
 
               <div className="space-y-4">
+                {error && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700">
+                    <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
+                    <span className="text-sm">{error}</span>
+                  </motion.div>
+                )}
+
                 <button
                   onClick={handleGoogleSignIn}
-                  className="w-full flex items-center justify-center gap-2 border border-stone-300 rounded-lg py-3 font-semibold text-stone-800 hover:bg-stone-50 transition-colors">
+                  disabled={isLoading}
+                  className="w-full flex items-center justify-center gap-2 border border-stone-300 rounded-lg py-3 font-semibold text-stone-800 hover:bg-stone-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                   <FaGoogle className="text-blue-500" />
-                  Sign in with Google
+                  {isLoading ? "Signing in..." : "Sign in with Google"}
                 </button>
 
                 <div className="flex items-center">
@@ -139,10 +204,20 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       id="email"
                       value={formData.email}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-10 py-2 border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
+                      className={`w-full pl-3 pr-10 py-2 border-b-2 focus:outline-none transition-colors ${
+                        fieldErrors.email ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
+                      }`}
                       placeholder="Email"
                       required
                     />
+                    {fieldErrors.email && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-500 text-xs mt-1">
+                        {fieldErrors.email}
+                      </motion.p>
+                    )}
                   </div>
                   <div className="relative">
                     <label
@@ -156,7 +231,9 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       id="password"
                       value={formData.password}
                       onChange={handleInputChange}
-                      className="w-full pl-3 pr-10 py-2 border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
+                      className={`w-full pl-3 pr-10 py-2 border-b-2 focus:outline-none transition-colors ${
+                        fieldErrors.password ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
+                      }`}
                       placeholder="Password"
                       required
                     />
@@ -166,6 +243,14 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       className="absolute bottom-2 right-2 text-stone-500">
                       {showPassword ? <FaEye /> : <FaEyeSlash />}
                     </button>
+                    {fieldErrors.password && (
+                      <motion.p
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-red-500 text-xs mt-1">
+                        {fieldErrors.password}
+                      </motion.p>
+                    )}
                   </div>
                   <button
                     type="button"

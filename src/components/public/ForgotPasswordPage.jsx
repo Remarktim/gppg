@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes } from "react-icons/fa";
+import { FaTimes, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
+import { authService, validateEmail } from "../../lib/supabase";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.95 },
@@ -17,6 +18,46 @@ const backdropVariants = {
 };
 
 const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
+  const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { error: authError } = await authService.resetPassword(email);
+
+      if (authError) {
+        setError(authError);
+        return;
+      }
+
+      setSuccess("Password reset email sent! Check your inbox for instructions.");
+      setEmail("");
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Password reset error:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -44,8 +85,28 @@ const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
               <p className="text-stone-600 mt-1">No worries, we'll send you reset instructions.</p>
             </div>
 
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 mb-6">
+                <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
+                <span className="text-sm">{error}</span>
+              </motion.div>
+            )}
+
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 mb-6">
+                <FaCheckCircle className="text-green-500 flex-shrink-0" />
+                <span className="text-sm">{success}</span>
+              </motion.div>
+            )}
+
             <form
-              onSubmit={(e) => e.preventDefault()}
+              onSubmit={handleSubmit}
               className="space-y-6">
               <div>
                 <label
@@ -57,16 +118,26 @@ const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
                   type="email"
                   id="reset-email"
                   placeholder="Enter your email"
-                  className="w-full py-2 bg-transparent border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (error) setError("");
+                    if (success) setSuccess("");
+                  }}
+                  className={`w-full py-2 bg-transparent border-b-2 focus:outline-none transition-colors ${
+                    error && !email.trim() ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
+                  }`}
+                  required
                 />
               </div>
 
               <motion.button
                 type="submit"
-                className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-300 mt-4"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}>
-                Send Reset Link
+                disabled={isLoading}
+                className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-300 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                whileHover={{ scale: isLoading ? 1 : 1.02 }}
+                whileTap={{ scale: isLoading ? 1 : 0.98 }}>
+                {isLoading ? "Sending..." : "Send Reset Link"}
               </motion.button>
             </form>
 

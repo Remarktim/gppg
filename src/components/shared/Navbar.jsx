@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
 import logo from "../../assets/img/logo.jpg";
 
-const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
+const Navbar = ({ onSignInClick, userType, onLogout }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProductsOpen, setIsProductsOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -56,18 +57,25 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
 
   // Different navigation items based on user type
   const getNavItems = () => {
+    if (userType === "admin") {
+      return [
+        { label: "Dashboard", to: "/admin/dashboard" },
+        // Add other admin links here, e.g., user management
+      ];
+    }
+
     if (userType === "user") {
       return [
-        { label: "Home", href: "#", action: () => navigateTo("dashboard") },
-        { label: "Trend", href: "#", action: () => navigateTo("trends") },
-        { label: "Map", href: "#", action: () => navigateTo("map") },
-        { label: "Activities", href: "#", action: () => navigateTo("activities") },
-        { label: "Gallery", href: "#", action: () => navigateTo("gallery") },
+        { label: "Home", to: "/dashboard" },
+        { label: "Trend", to: "/trends" },
+        { label: "Map", to: "/map" },
+        { label: "Activities", to: "/activities" },
+        { label: "Gallery", to: "/gallery" },
         {
           label: "About",
           dropdown: [
-            { label: "Officers", href: "#", action: () => navigateTo("officers") },
-            { label: "About Us", href: "#", action: () => navigateTo("about") },
+            { label: "Officers", to: "/officers" },
+            { label: "About Us", to: "/about" },
           ],
         },
       ];
@@ -75,12 +83,12 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
 
     // Default navigation for public users
     return [
-      { label: "Home", href: "#", action: () => navigateTo("landing") },
+      { label: "Home", to: "/" },
       {
         label: "About",
         dropdown: [
-          { label: "Officers", href: "#", action: () => navigateTo("officers") },
-          { label: "About Us", href: "#", action: () => navigateTo("about") },
+          { label: "Officers", to: "/officers" },
+          { label: "About Us", to: "/about" },
         ],
       },
     ];
@@ -109,12 +117,12 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                   alt="GPPG Logo"
                 />
               </div>
-              <a
-                href=""
+              <Link
+                to={userType === "user" ? "/dashboard" : "/"}
                 className="text-lg sm:text-xl font-semibold tracking-wider no-underline">
                 <span className="hidden xl:inline">Guardians of the Palawan Pangolin Guild</span>
                 <span className="inline xl:hidden">GPPG</span>
-              </a>
+              </Link>
             </div>
 
             {/* Desktop Menu */}
@@ -159,19 +167,14 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                               }`}>
                               {item.dropdown.map((dropdownItem, dropdownIndex) => (
                                 <li key={dropdownIndex}>
-                                  <a
-                                    onClick={(e) => {
-                                      if (dropdownItem.action) {
-                                        e.preventDefault();
-                                        dropdownItem.action();
-                                      }
-                                    }}
+                                  <Link
+                                    to={dropdownItem.to}
+                                    onClick={() => setIsProductsOpen(false)}
                                     className={`block px-4 py-2 transition-all duration-200 first:rounded-t-lg last:rounded-b-lg ${
                                       isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"
-                                    }`}
-                                    href={dropdownItem.href}>
+                                    }`}>
                                     {dropdownItem.label}
-                                  </a>
+                                  </Link>
                                 </li>
                               ))}
                             </motion.ul>
@@ -179,17 +182,11 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         </AnimatePresence>
                       </>
                     ) : (
-                      <a
-                        href={item.href}
-                        onClick={(e) => {
-                          if (item.action) {
-                            e.preventDefault();
-                            item.action();
-                          }
-                        }}
+                      <Link
+                        to={item.to}
                         className={`transition-colors duration-200 ${linkClasses}`}>
                         {item.label}
-                      </a>
+                      </Link>
                     )}
                   </li>
                 ))}
@@ -219,39 +216,28 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         exit="exit"
                         className={`absolute top-full right-0 mt-6 w-48 rounded-2xl shadow-xl z-20 ${isScrolled ? "bg-white text-black" : "bg-white/20 backdrop-blur-sm text-white"}`}>
                         <li>
-                          <a
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigateTo("user-dashboard");
-                            }}
-                            className={`block px-4 py-2 transition-all duration-200 first:rounded-t-lg ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}
-                            href="#">
+                          <Link
+                            to="/dashboard"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className={`block px-4 py-2 transition-all duration-200 first:rounded-t-lg ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}>
                             Dashboard
-                          </a>
+                          </Link>
                         </li>
                         <li>
-                          <a
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigateTo("profile-settings");
-                              setIsUserMenuOpen(false);
-                            }}
-                            className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}
-                            href="#">
+                          <Link
+                            to="/profile-settings"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}>
                             Profile Settings
-                          </a>
+                          </Link>
                         </li>
                         <li>
-                          <a
-                            onClick={(e) => {
-                              e.preventDefault();
-                              navigateTo("report");
-                              setIsUserMenuOpen(false);
-                            }}
-                            className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}
-                            href="#">
+                          <Link
+                            to="/report"
+                            onClick={() => setIsUserMenuOpen(false)}
+                            className={`block px-4 py-2 transition-all duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10 hover:text-white/70"}`}>
                             Report
-                          </a>
+                          </Link>
                         </li>
 
                         <li>
@@ -359,17 +345,17 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                               className="mt-2 ml-4 space-y-1">
                               {item.dropdown.map((dropdownItem, dropdownIndex) => (
                                 <li key={dropdownIndex}>
-                                  <a
+                                  <Link
+                                    to={dropdownItem.to}
                                     onClick={(e) => {
                                       if (dropdownItem.action) {
                                         e.preventDefault();
                                         dropdownItem.action();
                                       }
                                     }}
-                                    className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}
-                                    href={dropdownItem.href}>
+                                    className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}>
                                     {dropdownItem.label}
-                                  </a>
+                                  </Link>
                                 </li>
                               ))}
                             </motion.ul>
@@ -377,8 +363,8 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         </AnimatePresence>
                       </div>
                     ) : (
-                      <a
-                        href={item.href}
+                      <Link
+                        to={item.to}
                         onClick={(e) => {
                           if (item.action) {
                             e.preventDefault();
@@ -388,7 +374,7 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                         }}
                         className={`block text-left px-3 py-2 rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}>
                         {item.label}
-                      </a>
+                      </Link>
                     )}
                   </li>
                 ))}
@@ -430,30 +416,40 @@ const Navbar = ({ onSignInClick, userType, onLogout, navigateTo }) => {
                             exit="exit"
                             className="mt-2 ml-4 space-y-1">
                             <li>
-                              <a
+                              <Link
+                                to="/dashboard"
                                 onClick={(e) => {
                                   e.preventDefault();
-                                  navigateTo("user-dashboard");
+                                  setIsUserMenuOpen(false);
                                   setIsMenuOpen(false);
                                 }}
-                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}
-                                href="#">
+                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}>
                                 Dashboard
-                              </a>
+                              </Link>
                             </li>
                             <li>
-                              <a
-                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}
-                                href="#">
+                              <Link
+                                to="/profile-settings"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserMenuOpen(false);
+                                  setIsMenuOpen(false);
+                                }}
+                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}>
                                 Profile Settings
-                              </a>
+                              </Link>
                             </li>
                             <li>
-                              <a
-                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}
-                                href="#">
-                                My Recordings
-                              </a>
+                              <Link
+                                to="/report"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setIsUserMenuOpen(false);
+                                  setIsMenuOpen(false);
+                                }}
+                                className={`block text-left px-3 py-2 text-sm rounded-lg transition-colors duration-200 ${isScrolled ? "hover:bg-gray-100" : "hover:bg-white/10"}`}>
+                                Report
+                              </Link>
                             </li>
                             <li>
                               <button

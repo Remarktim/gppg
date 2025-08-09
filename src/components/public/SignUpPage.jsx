@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes, FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaTimes, FaEye, FaEyeSlash, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
+import { authService, validateEmail, validatePassword } from "../../lib/supabase";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.95 },
@@ -28,6 +29,10 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
     confirmPassword: "",
     terms: false,
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleChange = (e) => {
     const { id, value, type, checked } = e.target;
@@ -41,6 +46,113 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
       setFormData({ ...formData, [id]: checked });
     } else {
       setFormData({ ...formData, [id]: value });
+    }
+
+    // Clear field-specific errors when user starts typing
+    if (fieldErrors[id]) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        [id]: "",
+      }));
+    }
+
+    // Clear general messages
+    if (error) setError("");
+    if (success) setSuccess("");
+  };
+
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.firstName.trim()) {
+      errors.firstName = "First name is required";
+    }
+
+    if (!formData.lastName.trim()) {
+      errors.lastName = "Last name is required";
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = "Email is required";
+    } else if (!validateEmail(formData.email)) {
+      errors.email = "Please enter a valid email address";
+    }
+
+    if (!formData.phone.trim()) {
+      errors.phone = "Phone number is required";
+    } else if (formData.phone.length !== 11) {
+      errors.phone = "Phone number must be 11 digits";
+    }
+
+    if (!formData.password.trim()) {
+      errors.password = "Password is required";
+    } else {
+      const passwordValidation = validatePassword(formData.password);
+      if (!passwordValidation.isValid) {
+        errors.password = "Password must be at least 8 characters long";
+      }
+    }
+
+    if (!formData.confirmPassword.trim()) {
+      errors.confirmPassword = "Please confirm your password";
+    } else if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Passwords do not match";
+    }
+
+    if (!formData.terms) {
+      errors.terms = "You must agree to the terms and conditions";
+    }
+
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const { data, error: authError } = await authService.signUp(formData.email, formData.password, {
+        full_name: `${formData.firstName} ${formData.lastName}`,
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        phone: formData.phone,
+      });
+
+      if (authError) {
+        setError(authError);
+        return;
+      }
+
+      if (data?.user) {
+        setSuccess("Account created successfully! Please check your email to verify your account.");
+        setFormData({
+          firstName: "",
+          lastName: "",
+          email: "",
+          phone: "",
+          password: "",
+          confirmPassword: "",
+          terms: false,
+        });
+
+        // Switch to login after successful signup
+        setTimeout(() => {
+          onSwitchToLogin();
+        }, 2000);
+      }
+    } catch (err) {
+      setError("An unexpected error occurred. Please try again.");
+      console.error("Signup error:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -71,8 +183,28 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
               <p className="text-stone-600 mt-1">Join us today!</p>
             </div>
 
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 mb-6">
+                <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
+                <span className="text-sm">{error}</span>
+              </motion.div>
+            )}
+
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 mb-6">
+                <FaCheckCircle className="text-green-500 flex-shrink-0" />
+                <span className="text-sm">{success}</span>
+              </motion.div>
+            )}
+
             <form
-              onSubmit={(e) => e.preventDefault()}
+              onSubmit={handleSubmit}
               className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
                 <div>
@@ -85,10 +217,20 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
                     type="text"
                     id="firstName"
                     placeholder="Nick"
-                    className="w-full py-2 bg-transparent border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
+                    className={`w-full py-2 bg-transparent border-b-2 focus:outline-none transition-colors ${
+                      fieldErrors.firstName ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
+                    }`}
                     value={formData.firstName}
                     onChange={handleChange}
                   />
+                  {fieldErrors.firstName && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-500 text-xs mt-1">
+                      {fieldErrors.firstName}
+                    </motion.p>
+                  )}
                 </div>
                 <div>
                   <label
@@ -201,13 +343,22 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
                   </a>
                 </label>
               </div>
+              {fieldErrors.terms && (
+                <motion.p
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-500 text-xs">
+                  {fieldErrors.terms}
+                </motion.p>
+              )}
 
               <motion.button
                 type="submit"
-                className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-300 mt-4"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}>
-                Sign Up
+                disabled={isLoading || !formData.terms}
+                className="w-full bg-black text-white font-bold py-3 px-4 rounded-lg hover:bg-slate-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-all duration-300 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                whileHover={{ scale: isLoading || !formData.terms ? 1 : 1.02 }}
+                whileTap={{ scale: isLoading || !formData.terms ? 1 : 0.98 }}>
+                {isLoading ? "Creating Account..." : "Sign Up"}
               </motion.button>
             </form>
 
