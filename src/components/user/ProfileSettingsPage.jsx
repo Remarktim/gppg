@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion } from "framer-motion";
-import { FiUser, FiMail, FiPhone, FiMapPin, FiCamera, FiSave, FiEye, FiEyeOff, FiShield, FiAlertTriangle, FiCheck, FiRotateCw } from "react-icons/fi";
+import { FiUser, FiMail, FiPhone, FiCamera, FiSave, FiEye, FiEyeOff, FiShield, FiRotateCw } from "react-icons/fi";
 import headerBg from "../../assets/img/header_bg.jpg";
 import { useAuth } from "../../contexts/AuthContext";
 import { authService, validateEmail, validatePassword, supabase } from "../../lib/supabase";
+import toast from "react-hot-toast";
 
 const ProfileSettingsPage = () => {
   const { user, loading } = useAuth();
@@ -25,8 +26,6 @@ const ProfileSettingsPage = () => {
   // Loading and message states
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   // Profile form state
@@ -35,8 +34,15 @@ const ProfileSettingsPage = () => {
     lastName: "",
     email: "",
     phone: "",
-    location: "",
-    bio: "",
+    avatar_url: "",
+  });
+
+  // Original profile data to track changes
+  const [originalProfileData, setOriginalProfileData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
     avatar_url: "",
   });
 
@@ -57,7 +63,6 @@ const ProfileSettingsPage = () => {
 
       try {
         setIsLoadingProfile(true);
-        setError("");
 
         // Get user profile from Supabase
         const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).single();
@@ -67,19 +72,26 @@ const ProfileSettingsPage = () => {
           console.warn("Profile not found in database, using user metadata only");
         }
 
+        // Parse full_name into first and last names
+        const fullName = profile?.full_name || user.user_metadata?.full_name || "";
+        const nameParts = fullName.trim().split(/\s+/);
+        const firstName = nameParts[0] || user.user_metadata?.first_name || "";
+        const lastName = nameParts.slice(1).join(" ") || user.user_metadata?.last_name || "";
+
         // Set profile data from user metadata or profile table
-        setProfileData({
-          firstName: profile?.first_name || user.user_metadata?.first_name || "",
-          lastName: profile?.last_name || user.user_metadata?.last_name || "",
+        const profileState = {
+          firstName,
+          lastName,
           email: user.email || "",
           phone: profile?.phone || user.user_metadata?.phone || "",
-          location: profile?.location || "",
-          bio: profile?.bio || "",
           avatar_url: profile?.avatar_url || user.user_metadata?.avatar_url || "",
-        });
+        };
+
+        setProfileData(profileState);
+        setOriginalProfileData(profileState);
       } catch (err) {
         console.error("Error loading profile:", err);
-        setError("Failed to load profile data. Please check your connection and try again.");
+        toast.error("Failed to load profile data. Please check your connection and try again.");
       } finally {
         setIsLoadingProfile(false);
       }
@@ -95,8 +107,6 @@ const ProfileSettingsPage = () => {
     if (fieldErrors[field]) {
       setFieldErrors((prev) => ({ ...prev, [field]: "" }));
     }
-    if (error) setError("");
-    if (success) setSuccess("");
   };
 
   const handleSecurityChange = (field, value) => {
@@ -106,8 +116,17 @@ const ProfileSettingsPage = () => {
     if (fieldErrors[field]) {
       setFieldErrors((prev) => ({ ...prev, [field]: "" }));
     }
-    if (error) setError("");
-    if (success) setSuccess("");
+  };
+
+  // Check if profile data has changed
+  const hasProfileChanges = () => {
+    return (
+      profileData.firstName !== originalProfileData.firstName ||
+      profileData.lastName !== originalProfileData.lastName ||
+      profileData.email !== originalProfileData.email ||
+      profileData.phone !== originalProfileData.phone ||
+      profileData.avatar_url !== originalProfileData.avatar_url
+    );
   };
 
   const validateProfileForm = () => {
@@ -162,10 +181,8 @@ const ProfileSettingsPage = () => {
   };
 
   const handleSaveProfile = async () => {
-    setError("");
-    setSuccess("");
-
     if (!validateProfileForm()) {
+      toast.error("Please fix the form errors before saving");
       return;
     }
 
@@ -195,33 +212,32 @@ const ProfileSettingsPage = () => {
       if (metadataError) throw metadataError;
 
       // Update or insert profile in profiles table
+      const fullName = `${profileData.firstName} ${profileData.lastName}`.trim();
       const { error: profileError } = await supabase.from("profiles").upsert({
         id: user.id,
-        first_name: profileData.firstName,
-        last_name: profileData.lastName,
+        full_name: fullName,
         phone: profileData.phone,
-        location: profileData.location,
-        bio: profileData.bio,
         avatar_url: profileData.avatar_url,
         updated_at: new Date().toISOString(),
       });
 
       if (profileError) throw profileError;
 
-      setSuccess("Profile updated successfully!");
+      // Update original data to match current data after successful save
+      setOriginalProfileData({ ...profileData });
+
+      toast.success("Profile updated successfully!");
     } catch (err) {
       console.error("Error updating profile:", err);
-      setError(err.message || "Failed to update profile");
+      toast.error(err.message || "Failed to update profile");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleChangePassword = async () => {
-    setError("");
-    setSuccess("");
-
     if (!validateSecurityForm()) {
+      toast.error("Please fix the form errors before changing password");
       return;
     }
 
@@ -243,7 +259,7 @@ const ProfileSettingsPage = () => {
 
       if (updateError) throw updateError;
 
-      setSuccess("Password changed successfully!");
+      toast.success("Password changed successfully!");
       setSecurityData({
         currentPassword: "",
         newPassword: "",
@@ -251,7 +267,7 @@ const ProfileSettingsPage = () => {
       });
     } catch (err) {
       console.error("Error changing password:", err);
-      setError(err.message || "Failed to change password");
+      toast.error(err.message || "Failed to change password");
     } finally {
       setIsLoading(false);
     }
@@ -315,27 +331,6 @@ const ProfileSettingsPage = () => {
 
           {/* Tab Content */}
           <div className="p-6">
-            {/* Error/Success Messages */}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 mb-6">
-                <FiAlertTriangle className="text-red-500 flex-shrink-0" />
-                <span className="text-sm">{error}</span>
-              </motion.div>
-            )}
-
-            {success && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 mb-6">
-                <FiCheck className="text-green-500 flex-shrink-0" />
-                <span className="text-sm">{success}</span>
-              </motion.div>
-            )}
-
             {/* Profile Tab */}
             {activeTab === "profile" && (
               <motion.div
@@ -361,9 +356,9 @@ const ProfileSettingsPage = () => {
                   </div>
                 ) : (
                   <>
-                {/* Profile Picture Section */}
-                <div className="flex items-center space-x-6">
-                  <div className="relative">
+                    {/* Profile Picture Section */}
+                    <div className="flex items-center space-x-6">
+                      <div className="relative">
                         {profileData.avatar_url ? (
                           <img
                             src={profileData.avatar_url}
@@ -371,35 +366,35 @@ const ProfileSettingsPage = () => {
                             className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
                           />
                         ) : (
-                    <div className="w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+                          <div className="w-24 h-24 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
                             {profileData.firstName[0] || "U"}
                             {profileData.lastName[0] || ""}
-                    </div>
+                          </div>
                         )}
-                    <button className="absolute bottom-0 right-0 bg-white rounded-full p-2 shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors">
-                      <FiCamera className="w-4 h-4 text-gray-600" />
-                    </button>
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
+                        <button className="absolute bottom-0 right-0 bg-white rounded-full p-2 shadow-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                          <FiCamera className="w-4 h-4 text-gray-600" />
+                        </button>
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900">
                           {profileData.firstName || "User"} {profileData.lastName}
-                    </h3>
-                    <p className="text-gray-500">Update your profile picture</p>
+                        </h3>
+                        <p className="text-gray-500">Update your profile picture</p>
                         <p className="text-sm text-gray-400">{profileData.email}</p>
-                  </div>
-                </div>
+                      </div>
+                    </div>
 
                     {/* Profile Form */}
-                {/* Profile Form */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
-                    <div className="relative">
-                      <FiUser className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={profileData.firstName}
-                        onChange={(e) => handleProfileChange("firstName", e.target.value)}
+                    {/* Profile Form */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                        <div className="relative">
+                          <FiUser className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                          <input
+                            type="text"
+                            value={profileData.firstName}
+                            onChange={(e) => handleProfileChange("firstName", e.target.value)}
                             className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent bg-white/80 ${
                               fieldErrors.firstName ? "border-red-300 focus:ring-red-500" : "border-gray-300 focus:ring-[#4a1d1f]"
                             }`}
@@ -412,17 +407,17 @@ const ProfileSettingsPage = () => {
                               {fieldErrors.firstName}
                             </motion.p>
                           )}
-                    </div>
-                  </div>
+                        </div>
+                      </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
-                    <div className="relative">
-                      <FiUser className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={profileData.lastName}
-                        onChange={(e) => handleProfileChange("lastName", e.target.value)}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                        <div className="relative">
+                          <FiUser className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                          <input
+                            type="text"
+                            value={profileData.lastName}
+                            onChange={(e) => handleProfileChange("lastName", e.target.value)}
                             className={`w-full pl-10 pr-4 py-3 border rounded-xl focus:ring-2 focus:border-transparent bg-white/80 ${
                               fieldErrors.lastName ? "border-red-300 focus:ring-red-500" : "border-gray-300 focus:ring-[#4a1d1f]"
                             }`}
@@ -435,69 +430,47 @@ const ProfileSettingsPage = () => {
                               {fieldErrors.lastName}
                             </motion.p>
                           )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
+                        <div className="relative">
+                          <FiMail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                          <input
+                            type="email"
+                            value={profileData.email}
+                            onChange={(e) => handleProfileChange("email", e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                        <div className="relative">
+                          <FiPhone className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                          <input
+                            type="tel"
+                            value={profileData.phone}
+                            onChange={(e) => handleProfileChange("phone", e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Removed Location and Bio fields as requested */}
                     </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                    <div className="relative">
-                      <FiMail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="email"
-                        value={profileData.email}
-                        onChange={(e) => handleProfileChange("email", e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                    <div className="relative">
-                      <FiPhone className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        value={profileData.phone}
-                        onChange={(e) => handleProfileChange("phone", e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
-                    <div className="relative">
-                      <FiMapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={profileData.location}
-                        onChange={(e) => handleProfileChange("location", e.target.value)}
-                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Bio</label>
-                    <textarea
-                      value={profileData.bio}
-                      onChange={(e) => handleProfileChange("bio", e.target.value)}
-                      rows={4}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-800 focus:border-transparent bg-white/80 resize-none"
-                      placeholder="Tell us about yourself..."
-                    />
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={handleSaveProfile}
-                        disabled={isLoading}
+                    <div className="flex justify-end">
+                      <button
+                        onClick={handleSaveProfile}
+                        disabled={isLoading || !hasProfileChanges()}
                         className="flex items-center space-x-2 bg-[#4a1d1f] text-white px-6 py-3 rounded-xl hover:bg-[#6d2a2d] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed">
                         {isLoading ? <FiRotateCw className="w-5 h-5 animate-spin" /> : <FiSave className="w-5 h-5" />}
                         <span>{isLoading ? "Saving..." : "Save Changes"}</span>
-                  </button>
-                </div>
+                      </button>
+                    </div>
                   </>
                 )}
               </motion.div>

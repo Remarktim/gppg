@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { FiHeart, FiXCircle, FiAlertOctagon, FiAlertTriangle, FiSearch, FiUpload, FiFile, FiDownload } from "react-icons/fi";
+import { createPortal } from "react-dom";
+import toast from "react-hot-toast";
+import { FiHeart, FiXCircle, FiAlertOctagon, FiAlertTriangle, FiSearch, FiUpload, FiFile, FiDownload, FiMoreVertical, FiEdit, FiTrash2, FiEye } from "react-icons/fi";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -26,6 +28,9 @@ const PALAWAN_MUNICIPALITIES = [
   "Sofronio Española",
   "Taytay",
 ].sort();
+
+// Palawan Clusters
+const PALAWAN_CLUSTERS = ["South Palawan", "Central Palawan", "North Palawan"];
 
 const StatusBadge = ({ status }) => {
   const styleBy = {
@@ -71,16 +76,45 @@ const AdminPangolins = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isViewOpen, setIsViewOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isGeneratingTag, setIsGeneratingTag] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [tagError, setTagError] = useState("");
   const [validationErrors, setValidationErrors] = useState({});
+  const [openMenuRowId, setOpenMenuRowId] = useState(null);
+  const [menuRowData, setMenuRowData] = useState(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
+  const menuContainerRef = useRef(null);
   const [newRecord, setNewRecord] = useState({
     tag_id: "",
     municipality: "",
     status: "alive",
     found_at: new Date().toISOString().slice(0, 16),
+    sex: "",
+    age: "",
+    weight: "",
+    length: "",
+    cluster: "",
   });
+
+  const [editRecord, setEditRecord] = useState({
+    id: "",
+    tag_id: "",
+    municipality: "",
+    status: "alive",
+    found_at: new Date().toISOString().slice(0, 16),
+    sex: "",
+    age: "",
+    weight: "",
+    length: "",
+    cluster: "",
+  });
+
+  const [viewRecord, setViewRecord] = useState(null);
 
   // Import state
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -90,6 +124,13 @@ const AdminPangolins = () => {
   const [importErrors, setImportErrors] = useState([]);
   const [importSuccess, setImportSuccess] = useState(0);
 
+  // Municipality -> Cluster mapping (from geojson)
+  const [municipalityToCluster, setMunicipalityToCluster] = useState({});
+  const municipalities = useMemo(() => {
+    const keys = Object.keys(municipalityToCluster);
+    return keys.length > 0 ? keys.sort() : PALAWAN_MUNICIPALITIES;
+  }, [municipalityToCluster]);
+
   // Generate municipality code from municipality name
   const getMunicipalityCode = (municipality) => {
     if (!municipality) return "PP";
@@ -97,6 +138,10 @@ const AdminPangolins = () => {
     // Create a 2-3 letter code from municipality name
     const codeMap = {
       "Puerto Princesa City": "PPC",
+      Aborlan: "ABR",
+      Balabac: "BLB",
+      Bataraza: "BTR",
+      "Brooke's Point": "BRP",
       Agutaya: "AGT",
       Araceli: "ARC",
       Busuanga: "BSG",
@@ -166,6 +211,31 @@ const AdminPangolins = () => {
     }
   };
 
+  // Close row action menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!openMenuRowId) return;
+      const clickedOnTrigger = event.target?.closest?.(`[data-row-id="${openMenuRowId}"]`);
+      const clickedInsideMenu = menuContainerRef.current && menuContainerRef.current.contains(event.target);
+      if (!clickedOnTrigger && !clickedInsideMenu) {
+        setOpenMenuRowId(null);
+        setMenuRowData(null);
+      }
+    };
+    const onEsc = (e) => {
+      if (e.key === "Escape") {
+        setOpenMenuRowId(null);
+        setMenuRowData(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [openMenuRowId]);
+
   const openAddModal = async () => {
     // Reset all errors and states
     setError("");
@@ -173,12 +243,18 @@ const AdminPangolins = () => {
     setValidationErrors({});
 
     // Reset form with first municipality selected
-    const firstMunicipality = PALAWAN_MUNICIPALITIES[0];
+    const firstMunicipality = municipalities[0] || PALAWAN_MUNICIPALITIES[0];
+    const firstCluster = municipalityToCluster[firstMunicipality] || "";
     setNewRecord({
       tag_id: "",
       municipality: firstMunicipality,
       status: "alive",
       found_at: new Date().toISOString().slice(0, 16),
+      sex: "",
+      age: "",
+      weight: "",
+      length: "",
+      cluster: firstCluster,
     });
 
     setIsAddOpen(true);
@@ -199,7 +275,8 @@ const AdminPangolins = () => {
 
   // Handle municipality change and auto-generate new tag ID
   const handleMunicipalityChange = async (municipality) => {
-    setNewRecord((prev) => ({ ...prev, municipality }));
+    const autoCluster = municipalityToCluster[municipality] || "";
+    setNewRecord((prev) => ({ ...prev, municipality, cluster: autoCluster }));
     setTagError("");
     setValidationErrors((prev) => ({ ...prev, municipality: "" }));
 
@@ -220,6 +297,34 @@ const AdminPangolins = () => {
     }
   };
 
+  // Load GeoJSON once to build municipality -> cluster mapping
+  useEffect(() => {
+    let isMounted = true;
+    const loadMapping = async () => {
+      try {
+        const res = await fetch("/maps/Municipals.geojson");
+        if (!res.ok) return;
+        const geo = await res.json();
+        const map = {};
+        if (Array.isArray(geo?.features)) {
+          for (const f of geo.features) {
+            const name = f?.properties?.ADM3_EN;
+            const cluster = f?.properties?.Cluster;
+            if (name && cluster) map[name] = cluster;
+          }
+        }
+        if (isMounted) setMunicipalityToCluster(map);
+      } catch (err) {
+        // Non-critical; user can still select cluster manually
+        console.warn("Failed to load municipality cluster mapping:", err);
+      }
+    };
+    loadMapping();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const dbStatusToLabel = (s) => {
     if (s === "alive") return "Alive";
     if (s === "dead") return "Dead";
@@ -233,7 +338,7 @@ const AdminPangolins = () => {
       setIsLoading(true);
       setError("");
 
-      const { data, error } = await supabase.from("pangolins").select("id, tag_id, municipality, found_at, status").order("found_at", { ascending: false });
+      const { data, error } = await supabase.from("pangolins").select("id, tag_id, municipality, found_at, status, sex, age, weight, length, cluster").order("found_at", { ascending: false });
 
       if (error) {
         if (error.code === "PGRST116") {
@@ -260,6 +365,11 @@ const AdminPangolins = () => {
             municipality: r.municipality || "—",
             date: r.found_at ? new Date(r.found_at).toLocaleDateString() : "—",
             status: dbStatusToLabel(r.status),
+            sex: r.sex || "—",
+            age: r.age || "—",
+            weight: r.weight || "—",
+            length: r.length || "—",
+            cluster: r.cluster || "—",
           };
         } catch (rowError) {
           console.warn("Error processing row:", r, rowError);
@@ -269,6 +379,11 @@ const AdminPangolins = () => {
             municipality: "—",
             date: "—",
             status: "Unknown",
+            sex: "—",
+            age: "—",
+            weight: "—",
+            length: "—",
+            cluster: "—",
           };
         }
       });
@@ -333,10 +448,47 @@ const AdminPangolins = () => {
       errors.municipality = "Municipality is required";
     }
 
+    if (!newRecord.cluster?.trim()) {
+      errors.cluster = "Cluster is required";
+    }
+
     if (!newRecord.found_at) {
       errors.found_at = "Found date/time is required";
     } else {
       const foundDate = new Date(newRecord.found_at);
+      const now = new Date();
+      if (foundDate > now) {
+        errors.found_at = "Found date cannot be in the future";
+      }
+      if (foundDate < new Date("2000-01-01")) {
+        errors.found_at = "Found date seems too old";
+      }
+    }
+
+    return errors;
+  };
+
+  const validateEditForm = () => {
+    const errors = {};
+
+    if (!editRecord.tag_id?.trim()) {
+      errors.tag_id = "Tag ID is required";
+    } else if (!/^[A-Z]{2,3}-\d{3}$/.test(editRecord.tag_id.trim())) {
+      errors.tag_id = "Tag ID must be in format like 'PPC-001' or 'AGT-001'";
+    }
+
+    if (!editRecord.municipality?.trim()) {
+      errors.municipality = "Municipality is required";
+    }
+
+    if (!editRecord.cluster?.trim()) {
+      errors.cluster = "Cluster is required";
+    }
+
+    if (!editRecord.found_at) {
+      errors.found_at = "Found date/time is required";
+    } else {
+      const foundDate = new Date(editRecord.found_at);
       const now = new Date();
       if (foundDate > now) {
         errors.found_at = "Found date cannot be in the future";
@@ -355,7 +507,7 @@ const AdminPangolins = () => {
     if (lines.length < 2) throw new Error("CSV must have at least a header and one data row");
 
     const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-    const requiredHeaders = ["tag_id", "municipality", "status"];
+    const requiredHeaders = ["tag_id", "municipality", "status", "cluster"];
     const missingHeaders = requiredHeaders.filter((h) => !headers.includes(h));
 
     if (missingHeaders.length > 0) {
@@ -388,6 +540,12 @@ const AdminPangolins = () => {
       errors.push(`Row ${rowIndex}: Municipality is required`);
     } else if (!PALAWAN_MUNICIPALITIES.includes(row.municipality.trim())) {
       errors.push(`Row ${rowIndex}: Invalid municipality '${row.municipality}'`);
+    }
+
+    if (!row.cluster?.trim()) {
+      errors.push(`Row ${rowIndex}: Cluster is required`);
+    } else if (!PALAWAN_CLUSTERS.includes(row.cluster.trim())) {
+      errors.push(`Row ${rowIndex}: Invalid cluster '${row.cluster}'. Must be one of: ${PALAWAN_CLUSTERS.join(", ")}`);
     }
 
     const validStatuses = ["alive", "dead", "illegal_trade", "poaching"];
@@ -466,6 +624,11 @@ const AdminPangolins = () => {
       const records = data.map((row) => ({
         tag_id: row.tag_id?.trim() || null,
         municipality: row.municipality?.trim() || null,
+        cluster: row.cluster?.trim() || null,
+        sex: row.sex?.trim() || null,
+        age: row.age?.trim() || null,
+        weight: row.weight?.trim() || null,
+        length: row.length?.trim() || null,
         status: row.status?.trim().toLowerCase() || "alive",
         found_at: row.found_at ? new Date(row.found_at).toISOString() : new Date().toISOString(),
         ...(user?.id && { reporter_id: user.id }),
@@ -515,8 +678,8 @@ const AdminPangolins = () => {
 
   // Download sample CSV template
   const downloadSampleCSV = () => {
-    const headers = ["tag_id", "municipality", "status", "found_at"];
-    const sampleRow = ["PPC-001", "Puerto Princesa City", "alive", "2024-01-15T10:30:00"];
+    const headers = ["tag_id", "municipality", "cluster", "sex", "age", "weight", "length", "status", "found_at"];
+    const sampleRow = ["PPC-001", "Puerto Princesa City", "South Palawan", "Male", "Adult", "2.5", "45", "alive", "2024-01-15T10:30:00"];
     const csvContent = [headers.join(","), sampleRow.join(",")].join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv" });
@@ -568,6 +731,11 @@ const AdminPangolins = () => {
         municipality: newRecord.municipality?.trim() || null,
         status: newRecord.status,
         found_at: new Date(newRecord.found_at).toISOString(),
+        sex: newRecord.sex?.trim() || null,
+        age: newRecord.age?.trim() || null,
+        weight: newRecord.weight?.trim() || null,
+        length: newRecord.length?.trim() || null,
+        cluster: newRecord.cluster?.trim() || null,
       };
 
       // Include reporter_id for authenticated Supabase users
@@ -590,11 +758,17 @@ const AdminPangolins = () => {
       }
 
       setIsAddOpen(false);
+      toast.success("Pangolin added successfully");
       setNewRecord({
         tag_id: "",
         municipality: PALAWAN_MUNICIPALITIES[0],
         status: "alive",
         found_at: new Date().toISOString().slice(0, 16),
+        sex: "",
+        age: "",
+        weight: "",
+        length: "",
+        cluster: "",
       });
       await loadData();
     } catch (err) {
@@ -602,6 +776,109 @@ const AdminPangolins = () => {
       setError(err.message || "Failed to add pangolin. Please try again.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Open view modal with selected row data
+  const openViewModal = (row) => {
+    setViewRecord(row);
+    setIsViewOpen(true);
+  };
+
+  // Open edit modal and load full record from DB
+  const openEditModal = async (id) => {
+    try {
+      setError("");
+      setValidationErrors({});
+      setIsEditOpen(true);
+
+      const { data, error } = await supabase.from("pangolins").select("id, tag_id, municipality, status, found_at, sex, age, weight, length, cluster").eq("id", id).single();
+
+      if (error) throw error;
+
+      setEditRecord({
+        id: data.id,
+        tag_id: data.tag_id || "",
+        municipality: data.municipality || "",
+        status: data.status || "alive",
+        found_at: data.found_at ? new Date(data.found_at).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16),
+        sex: data.sex || "",
+        age: data.age || "",
+        weight: data.weight || "",
+        length: data.length || "",
+        cluster: data.cluster || "",
+      });
+    } catch (err) {
+      console.error("Load pangolin for edit error:", err);
+      setError(err.message || "Failed to load record for editing");
+      setIsEditOpen(false);
+    }
+  };
+
+  const onUpdate = async (e) => {
+    e?.preventDefault?.();
+    setError("");
+    setValidationErrors({});
+
+    const errors = validateEditForm();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
+      setError("Please fix the validation errors below");
+      return;
+    }
+
+    try {
+      setIsUpdating(true);
+      const payload = {
+        tag_id: editRecord.tag_id?.trim() || null,
+        municipality: editRecord.municipality?.trim() || null,
+        status: editRecord.status,
+        found_at: new Date(editRecord.found_at).toISOString(),
+        sex: editRecord.sex?.trim() || null,
+        age: editRecord.age?.trim() || null,
+        weight: editRecord.weight?.trim() || null,
+        length: editRecord.length?.trim() || null,
+        cluster: editRecord.cluster?.trim() || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from("pangolins").update(payload).eq("id", editRecord.id);
+      if (error) throw error;
+
+      setIsEditOpen(false);
+      toast.success("Pangolin updated successfully");
+      await loadData();
+    } catch (err) {
+      console.error("Update pangolin error:", err);
+      setError(err.message || "Failed to update pangolin. Please try again.");
+      toast.error(err.message || "Failed to update pangolin");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Delete flow
+  const [deleteId, setDeleteId] = useState(null);
+  const openDeleteModal = (id) => {
+    setDeleteId(id);
+    setIsDeleteOpen(true);
+  };
+
+  const onDelete = async () => {
+    try {
+      setIsDeleting(true);
+      const { error } = await supabase.from("pangolins").delete().eq("id", deleteId);
+      if (error) throw error;
+      setIsDeleteOpen(false);
+      setDeleteId(null);
+      toast.success("Pangolin deleted successfully");
+      await loadData();
+    } catch (err) {
+      console.error("Delete pangolin error:", err);
+      setError(err.message || "Failed to delete pangolin. Please try again.");
+      toast.error(err.message || "Failed to delete pangolin");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -704,11 +981,16 @@ const AdminPangolins = () => {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[900px] w-full text-sm">
+          <table className="min-w-[1400px] w-full text-sm">
             <thead>
               <tr className="text-left text-gray-600">
                 <th className="py-2 px-4">Tag ID</th>
                 <th className="py-2 px-4">Municipality</th>
+                <th className="py-2 px-4">Cluster</th>
+                <th className="py-2 px-4">Sex</th>
+                <th className="py-2 px-4">Age</th>
+                <th className="py-2 px-4">Weight</th>
+                <th className="py-2 px-4">Length</th>
                 <th className="py-2 px-4">Date</th>
                 <th className="py-2 px-4">Status</th>
                 <th className="py-2 px-4 text-right">Action</th>
@@ -718,7 +1000,7 @@ const AdminPangolins = () => {
               {isLoading ? (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="10"
                     className="py-6 px-4 text-center text-gray-500">
                     Loading...
                   </td>
@@ -730,12 +1012,31 @@ const AdminPangolins = () => {
                     className="border-t border-gray-100 hover:bg-gray-50">
                     <td className="py-3 px-4 font-medium text-gray-900">{p.tag}</td>
                     <td className="py-3 px-4 text-gray-800">{p.municipality}</td>
+                    <td className="py-3 px-4 text-gray-800">{p.cluster}</td>
+                    <td className="py-3 px-4 text-gray-800">{p.sex}</td>
+                    <td className="py-3 px-4 text-gray-800">{p.age}</td>
+                    <td className="py-3 px-4 text-gray-800">{p.weight}</td>
+                    <td className="py-3 px-4 text-gray-800">{p.length}</td>
                     <td className="py-3 px-4 text-gray-800">{p.date}</td>
                     <td className="py-3 px-4">
                       <StatusBadge status={p.status} />
                     </td>
                     <td className="py-3 px-4 text-right">
-                      <button className="text-gray-900 hover:underline">View</button>
+                      <button
+                        type="button"
+                        data-row-id={p.id}
+                        onClick={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const menuWidth = 160;
+                          const x = Math.min(window.innerWidth - menuWidth - 8, rect.right + window.scrollX - menuWidth);
+                          const y = rect.bottom + window.scrollY + 8;
+                          setMenuPosition({ x, y });
+                          setMenuRowData(p);
+                          setOpenMenuRowId((curr) => (curr === p.id ? null : p.id));
+                        }}
+                        className="p-2 rounded hover:bg-gray-100">
+                        <FiMoreVertical />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -743,7 +1044,7 @@ const AdminPangolins = () => {
               {filtered.length === 0 && !isLoading && (
                 <tr>
                   <td
-                    colSpan="5"
+                    colSpan="10"
                     className="py-6 px-4 text-center text-gray-500">
                     No records
                   </td>
@@ -795,7 +1096,7 @@ const AdminPangolins = () => {
                   required
                   disabled={isGeneratingTag}>
                   <option value="">Select Municipality</option>
-                  {PALAWAN_MUNICIPALITIES.map((municipality) => (
+                  {municipalities.map((municipality) => (
                     <option
                       key={municipality}
                       value={municipality}>
@@ -804,6 +1105,73 @@ const AdminPangolins = () => {
                   ))}
                 </select>
                 {validationErrors.municipality && <p className="text-red-500 text-xs mt-1">{validationErrors.municipality}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cluster *</label>
+                <select
+                  value={newRecord.cluster}
+                  onChange={(e) => {
+                    setNewRecord((v) => ({ ...v, cluster: e.target.value }));
+                    setValidationErrors((prev) => ({ ...prev, cluster: "" }));
+                  }}
+                  className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent ${validationErrors.cluster ? "border-red-300" : "border-gray-300"}`}
+                  required>
+                  <option value="">Select Cluster</option>
+                  {PALAWAN_CLUSTERS.map((cluster) => (
+                    <option
+                      key={cluster}
+                      value={cluster}>
+                      {cluster}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.cluster && <p className="text-red-500 text-xs mt-1">{validationErrors.cluster}</p>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sex</label>
+                  <select
+                    value={newRecord.sex}
+                    onChange={(e) => setNewRecord((v) => ({ ...v, sex: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent">
+                    <option value="">Select Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Unknown">Unknown</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                  <input
+                    type="text"
+                    value={newRecord.age}
+                    onChange={(e) => setNewRecord((v) => ({ ...v, age: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., Adult, Juvenile, 2 years"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
+                  <input
+                    type="text"
+                    value={newRecord.weight}
+                    onChange={(e) => setNewRecord((v) => ({ ...v, weight: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., 2.5"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Length (cm)</label>
+                  <input
+                    type="text"
+                    value={newRecord.length}
+                    onChange={(e) => setNewRecord((v) => ({ ...v, length: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., 45"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -853,6 +1221,284 @@ const AdminPangolins = () => {
         </div>
       )}
 
+      {/* Row action menu (portal) */}
+      {openMenuRowId &&
+        menuRowData &&
+        createPortal(
+          <div
+            ref={menuContainerRef}
+            className="z-[60] fixed w-40 origin-top-right rounded-md bg-white shadow-lg   border border-gray-100"
+            style={{ top: `${menuPosition.y}px`, left: `${menuPosition.x}px` }}>
+            <div className="py-1">
+              <button
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  openViewModal(menuRowData);
+                  setOpenMenuRowId(null);
+                  setMenuRowData(null);
+                }}>
+                <FiEye className="text-gray-500" /> View
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  openEditModal(menuRowData.id);
+                  setOpenMenuRowId(null);
+                  setMenuRowData(null);
+                }}>
+                <FiEdit className="text-gray-500" /> Edit/Update
+              </button>
+              <button
+                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-700 hover:bg-red-50"
+                onClick={() => {
+                  openDeleteModal(menuRowData.id);
+                  setOpenMenuRowId(null);
+                  setMenuRowData(null);
+                }}>
+                <FiTrash2 className="text-red-500" /> Delete
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Edit Modal */}
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Edit Pangolin</h3>
+              <button
+                onClick={() => setIsEditOpen(false)}
+                className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={onUpdate}>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tag ID</label>
+                <input
+                  value={editRecord.tag_id}
+                  onChange={(e) => {
+                    setEditRecord((v) => ({ ...v, tag_id: e.target.value }));
+                    setValidationErrors((prev) => ({ ...prev, tag_id: "" }));
+                  }}
+                  className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent ${validationErrors.tag_id ? "border-red-300" : "border-gray-300"}`}
+                  placeholder="PPC-001"
+                />
+                {validationErrors.tag_id && <p className="text-red-500 text-xs mt-1">{validationErrors.tag_id}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Municipality</label>
+                <select
+                  value={editRecord.municipality}
+                  onChange={(e) => setEditRecord((v) => ({ ...v, municipality: e.target.value }))}
+                  className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent ${validationErrors.municipality ? "border-red-300" : "border-gray-300"}`}>
+                  <option value="">Select Municipality</option>
+                  {PALAWAN_MUNICIPALITIES.map((municipality) => (
+                    <option
+                      key={municipality}
+                      value={municipality}>
+                      {municipality}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.municipality && <p className="text-red-500 text-xs mt-1">{validationErrors.municipality}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cluster *</label>
+                <select
+                  value={editRecord.cluster}
+                  onChange={(e) => setEditRecord((v) => ({ ...v, cluster: e.target.value }))}
+                  className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent ${validationErrors.cluster ? "border-red-300" : "border-gray-300"}`}>
+                  <option value="">Select Cluster</option>
+                  {PALAWAN_CLUSTERS.map((cluster) => (
+                    <option
+                      key={cluster}
+                      value={cluster}>
+                      {cluster}
+                    </option>
+                  ))}
+                </select>
+                {validationErrors.cluster && <p className="text-red-500 text-xs mt-1">{validationErrors.cluster}</p>}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sex</label>
+                  <select
+                    value={editRecord.sex}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, sex: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent">
+                    <option value="">Select Sex</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Unknown">Unknown</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Age</label>
+                  <input
+                    type="text"
+                    value={editRecord.age}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, age: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., Adult, Juvenile, 2 years"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Weight (kg)</label>
+                  <input
+                    type="text"
+                    value={editRecord.weight}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, weight: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., 2.5"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Length (cm)</label>
+                  <input
+                    type="text"
+                    value={editRecord.length}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, length: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent"
+                    placeholder="e.g., 45"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={editRecord.status}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, status: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent">
+                    <option value="alive">Alive</option>
+                    <option value="dead">Dead</option>
+                    <option value="illegal_trade">Illegal Trade</option>
+                    <option value="poaching">Poaching</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Found At</label>
+                  <input
+                    type="datetime-local"
+                    value={editRecord.found_at}
+                    onChange={(e) => setEditRecord((v) => ({ ...v, found_at: e.target.value }))}
+                    className={`w-full px-3 py-2 rounded-lg border focus:ring-2 focus:ring-[#4a1d1f] focus:border-transparent ${validationErrors.found_at ? "border-red-300" : "border-gray-300"}`}
+                    max={new Date().toISOString().slice(0, 16)}
+                  />
+                  {validationErrors.found_at && <p className="text-red-500 text-xs mt-1">{validationErrors.found_at}</p>}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditOpen(false)}
+                  className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdating}
+                  className="px-3 py-2 rounded-lg bg-[#4a1d1f] text-white hover:bg-[#6d2a2d] disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors">
+                  {isUpdating ? "Updating..." : "Update"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {isViewOpen && viewRecord && (
+        <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4">
+          <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Pangolin Details</h3>
+              <button
+                onClick={() => setIsViewOpen(false)}
+                className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-gray-500">Tag ID:</span> <span className="font-medium">{viewRecord.tag}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Municipality:</span> <span className="font-medium">{viewRecord.municipality}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Cluster:</span> <span className="font-medium">{viewRecord.cluster}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Sex:</span> <span className="font-medium">{viewRecord.sex}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Age:</span> <span className="font-medium">{viewRecord.age}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Weight:</span> <span className="font-medium">{viewRecord.weight}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Length:</span> <span className="font-medium">{viewRecord.length}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Date:</span> <span className="font-medium">{viewRecord.date}</span>
+              </div>
+              <div className="sm:col-span-2">
+                <span className="text-gray-500">Status:</span>{" "}
+                <span className="inline-block ml-2">
+                  <StatusBadge status={viewRecord.status} />
+                </span>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-4">
+              <button
+                onClick={() => setIsViewOpen(false)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {isDeleteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Delete Pangolin</h3>
+              <button
+                onClick={() => setIsDeleteOpen(false)}
+                className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+            <p className="text-sm text-gray-700">Are you sure you want to delete this pangolin record? This action cannot be undone.</p>
+            <div className="flex justify-end gap-2 pt-4">
+              <button
+                onClick={() => setIsDeleteOpen(false)}
+                className="px-3 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50">
+                Cancel
+              </button>
+              <button
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                {isDeleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Import Modal */}
       {isImportOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 grid place-items-center p-4">
@@ -882,7 +1528,9 @@ const AdminPangolins = () => {
                         className="hidden"
                       />
                     </label>
-                    <p className="mt-2 text-xs text-gray-500">CSV files should have headers: tag_id, municipality, status, found_at (optional)</p>
+                    <p className="mt-2 text-xs text-gray-500">
+                      CSV files should have headers: tag_id, municipality, cluster, sex (optional), age (optional), weight (optional), length (optional), status, found_at (optional)
+                    </p>
                   </div>
                   <div className="mt-4">
                     <button
@@ -938,6 +1586,11 @@ const AdminPangolins = () => {
                         <tr className="text-left text-gray-600">
                           <th className="py-1 px-2">Tag ID</th>
                           <th className="py-1 px-2">Municipality</th>
+                          <th className="py-1 px-2">Cluster</th>
+                          <th className="py-1 px-2">Sex</th>
+                          <th className="py-1 px-2">Age</th>
+                          <th className="py-1 px-2">Weight</th>
+                          <th className="py-1 px-2">Length</th>
                           <th className="py-1 px-2">Status</th>
                           <th className="py-1 px-2">Found At</th>
                         </tr>
@@ -949,6 +1602,11 @@ const AdminPangolins = () => {
                             className="border-t border-gray-200">
                             <td className="py-1 px-2 font-medium">{row.tag_id}</td>
                             <td className="py-1 px-2">{row.municipality}</td>
+                            <td className="py-1 px-2">{row.cluster}</td>
+                            <td className="py-1 px-2">{row.sex || "—"}</td>
+                            <td className="py-1 px-2">{row.age || "—"}</td>
+                            <td className="py-1 px-2">{row.weight || "—"}</td>
+                            <td className="py-1 px-2">{row.length || "—"}</td>
                             <td className="py-1 px-2">{row.status}</td>
                             <td className="py-1 px-2">{row.found_at || "Auto-generated"}</td>
                           </tr>

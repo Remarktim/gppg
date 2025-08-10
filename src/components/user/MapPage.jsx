@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
+// eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { MapContainer, TileLayer, GeoJSON, Marker, Popup, useMap } from "react-leaflet";
-import { FiMap, FiLayers, FiMapPin, FiInfo, FiMaximize2, FiX, FiSearch } from "react-icons/fi";
+import { MapContainer, GeoJSON } from "react-leaflet";
+import { FiInfo, FiX, FiSearch } from "react-icons/fi";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import headerBg from "../../assets/img/header_bg.jpg";
+import { supabase } from "../../lib/supabase";
 
 // Register Chart.js components
 ChartJS.register(ArcElement, Tooltip, Legend);
@@ -19,66 +21,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
 });
 
-// Sample pangolin sighting data - focused on Palawan coordinates
-const pangolinSightings = [
-  {
-    id: 1,
-    lat: 10.8895,
-    lng: 119.2521,
-    title: "Pangolin Sighting - North Palawan",
-    description: "Adult pangolin spotted near El Nido coastal area",
-    date: "2024-01-15",
-    status: "confirmed",
-    region: "North Palawan",
-  },
-  {
-    id: 2,
-    lat: 9.7394,
-    lng: 118.7378,
-    title: "Pangolin Tracks - Central Palawan",
-    description: "Fresh tracks found in Puerto Princesa forest preserve",
-    date: "2024-01-12",
-    status: "unconfirmed",
-    region: "Central Palawan",
-  },
-  {
-    id: 3,
-    lat: 8.4542,
-    lng: 117.7415,
-    title: "Pangolin Den - South Palawan",
-    description: "Possible den site discovered near Balabac Island",
-    date: "2024-01-10",
-    status: "confirmed",
-    region: "South Palawan",
-  },
-  {
-    id: 4,
-    lat: 10.1693,
-    lng: 119.0734,
-    title: "Pangolin Family - North Palawan",
-    description: "Mother with juvenile observed in Taytay area",
-    date: "2024-01-08",
-    status: "confirmed",
-    region: "North Palawan",
-  },
-  {
-    id: 5,
-    lat: 9.0804,
-    lng: 118.0886,
-    title: "Pangolin Rescue - Central Palawan",
-    description: "Injured pangolin rescued and rehabilitated",
-    date: "2024-01-05",
-    status: "confirmed",
-    region: "Central Palawan",
-  },
-];
-
-// Sample data similar to your backend structure
-const regionDataMap = {
-  "North Palawan": { dead: 15, alive: 28, scales: 12, illegalTrades: 8 },
-  "Central Palawan": { dead: 22, alive: 35, scales: 18, illegalTrades: 12 },
-  "South Palawan": { dead: 8, alive: 16, scales: 6, illegalTrades: 4 },
-};
+// Note: Cluster centers for flyTo on search
 
 const regionCenters = {
   "North Palawan": [10.8, 119.4],
@@ -89,14 +32,14 @@ const regionCenters = {
 const MapPage = () => {
   const [geoData, setGeoData] = useState(null);
   const [selectedRegion, setSelectedRegion] = useState("all");
-  const [showSightings, setShowSightings] = useState(true);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen] = useState(false);
   const [selectedSighting, setSelectedSighting] = useState(null);
   const [hoveredRegion, setHoveredRegion] = useState(null);
   const [selectedFeature, setSelectedFeature] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [regionDataMap, setRegionDataMap] = useState({});
   const mapRef = useRef(null);
 
   // Load GeoJSON data from the public folder
@@ -111,6 +54,34 @@ const MapPage = () => {
         console.error("Error loading map data:", error);
         setIsLoading(false);
       });
+  }, []);
+
+  // Load cluster-level counts using the cluster_stats view
+  useEffect(() => {
+    let isMounted = true;
+    const loadClusterCounts = async () => {
+      try {
+        const { data, error } = await supabase.from("cluster_stats").select("cluster, alive, dead, poaching, illegal_trades");
+        if (error) throw error;
+        const countsByCluster = {};
+        for (const row of data || []) {
+          const clusterName = row.cluster || "Unknown";
+          countsByCluster[clusterName] = {
+            alive: Number(row.alive) || 0,
+            dead: Number(row.dead) || 0,
+            poaching: Number(row.poaching) || 0,
+            illegalTrades: Number(row.illegal_trades) || 0,
+          };
+        }
+        if (isMounted) setRegionDataMap(countsByCluster);
+      } catch (err) {
+        console.error("Error loading cluster counts:", err);
+      }
+    };
+    loadClusterCounts();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Get color based on cluster name (from your original code)
@@ -155,7 +126,7 @@ const MapPage = () => {
 
   // Calculate total incidents across all regions
   const calculateTotalIncidents = () => {
-    return Object.values(regionDataMap).reduce((total, region) => total + region.dead + region.alive + region.scales + region.illegalTrades, 0);
+    return Object.values(regionDataMap).reduce((total, region) => total + region.dead + region.alive + region.poaching + region.illegalTrades, 0);
   };
 
   // Get chart data for selected region
@@ -164,11 +135,11 @@ const MapPage = () => {
     if (!data) return null;
 
     return {
-      labels: ["Dead", "Alive", "Scales", "Illegal Trades"],
+      labels: ["Alive", "Dead", "Poaching", "Illegal Trades"],
       datasets: [
         {
-          data: [data.dead, data.alive, data.scales, data.illegalTrades],
-          backgroundColor: ["#ffa500", "#008000", "#8b4513", "#a52a2a"],
+          data: [data.alive, data.dead, data.poaching, data.illegalTrades],
+          backgroundColor: ["#16a34a", "#ef4444", "#0ea5e9", "#d97706"],
           borderWidth: 2,
           borderColor: "transparent",
         },
@@ -361,7 +332,7 @@ const MapPage = () => {
                     {regionDataMap[selectedFeature.properties.Municipalities] ? (
                       <>
                         <div className="text-center mb-6">
-                          <p className="font-semibold text-slate-600">Total Poaching Incidents</p>
+                          <p className="font-semibold text-slate-600">Total Incidents</p>
                           <p className="text-5xl font-bold text-orange-600 mt-1">{Object.values(regionDataMap[selectedFeature.properties.Municipalities]).reduce((a, b) => a + b, 0)}</p>
                           <p className="text-slate-500 mt-1 text-sm">
                             <b>{((Object.values(regionDataMap[selectedFeature.properties.Municipalities]).reduce((a, b) => a + b, 0) / calculateTotalIncidents()) * 100).toFixed(2)}%</b> of Palawan's
