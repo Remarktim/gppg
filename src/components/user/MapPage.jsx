@@ -254,7 +254,7 @@ const MapPage = () => {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search region..."
+                    placeholder="Search cluster..."
                     className="w-full sm:w-48 pl-4 pr-10 py-2 bg-white/80 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all duration-300 sm:focus:w-56"
                   />
                   <button
