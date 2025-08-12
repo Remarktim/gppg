@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
+import { FaTimes } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
 import { authService, validateEmail } from "../../lib/supabase";
+import toast from "react-hot-toast";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.95 },
@@ -20,21 +21,20 @@ const backdropVariants = {
 const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
-
+    // Validate
     if (!email.trim()) {
-      setError("Email is required");
+      setFieldErrors((prev) => ({ ...prev, email: "Email is required" }));
+      toast.error("Email is required");
       return;
     }
 
     if (!validateEmail(email)) {
-      setError("Please enter a valid email address");
+      setFieldErrors((prev) => ({ ...prev, email: "Please enter a valid email address" }));
+      toast.error("Please enter a valid email address");
       return;
     }
 
@@ -44,14 +44,15 @@ const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
       const { error: authError } = await authService.resetPassword(email);
 
       if (authError) {
-        setError(authError);
+        const message = typeof authError === "string" ? authError : authError?.message || "Failed to send reset email";
+        toast.error(message);
         return;
       }
 
-      setSuccess("Password reset email sent! Check your inbox for instructions.");
+      toast.success("Password reset email sent! Check your inbox for instructions.");
       setEmail("");
     } catch (err) {
-      setError("An unexpected error occurred. Please try again.");
+      toast.error("An unexpected error occurred. Please try again.");
       console.error("Password reset error:", err);
     } finally {
       setIsLoading(false);
@@ -85,25 +86,7 @@ const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
               <p className="text-stone-600 mt-1">No worries, we'll send you reset instructions.</p>
             </div>
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 mb-6">
-                <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
-                <span className="text-sm">{error}</span>
-              </motion.div>
-            )}
-
-            {success && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 mb-6">
-                <FaCheckCircle className="text-green-500 flex-shrink-0" />
-                <span className="text-sm">{success}</span>
-              </motion.div>
-            )}
+            {/* Notifications are handled via toasts */}
 
             <form
               onSubmit={handleSubmit}
@@ -121,14 +104,21 @@ const ForgotPasswordPage = ({ isOpen, onClose, onSwitchToLogin }) => {
                   value={email}
                   onChange={(e) => {
                     setEmail(e.target.value);
-                    if (error) setError("");
-                    if (success) setSuccess("");
+                    if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: "" }));
                   }}
                   className={`w-full py-2 bg-transparent border-b-2 focus:outline-none transition-colors ${
-                    error && !email.trim() ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
+                    fieldErrors.email ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
                   }`}
                   required
                 />
+                {fieldErrors.email && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-red-500 text-xs mt-1">
+                    {fieldErrors.email}
+                  </motion.p>
+                )}
               </div>
 
               <motion.button
