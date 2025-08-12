@@ -41,7 +41,7 @@ const AdminHeader = ({ onMenuClick, onLogout, onOpenPalette, user }) => {
   const displayEmail = user?.email || user?.user_metadata?.email || "admin@gppg.local";
 
   return (
-    <header className="sticky top-0 z-30 h-16 bg-white/70 backdrop-blur-md border-b border-gray-200 lg:ml-80">
+    <header className="sticky top-0 z-50 h-16 bg-white/70 backdrop-blur-md border-b border-gray-200 lg:ml-80">
       <div className="flex h-full items-center gap-3 px-4 lg:px-6">
         <button
           className="lg:hidden mr-1 rounded-md p-2 text-gray-600 hover:bg-gray-100"
@@ -94,7 +94,7 @@ const AdminHeader = ({ onMenuClick, onLogout, onOpenPalette, user }) => {
             </button>
 
             {isOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden">
+              <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-50">
                 <div className="px-3 py-3 bg-gradient-to-br from-[#fdf2f8] to-white">
                   <p className="text-sm font-semibold text-gray-900 truncate">{displayName}</p>
                   <p className="text-xs text-gray-500 truncate">{displayEmail}</p>

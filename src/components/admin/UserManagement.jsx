@@ -17,7 +17,8 @@ const UserManagement = () => {
       setError("");
 
       // First try to get users from profiles table if it exists
-      const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("id, full_name, email, avatar_url, updated_at").order("updated_at", { ascending: false });
+      // Use wildcard select to gracefully handle presence/absence of specific columns
+      const { data: profilesData, error: profilesError } = await supabase.from("profiles").select("*").order("updated_at", { ascending: false });
 
       if (profilesError && profilesError.code !== "42P01") {
         // 42P01 = table doesn't exist
@@ -25,14 +26,32 @@ const UserManagement = () => {
       }
 
       if (profilesData && profilesData.length > 0) {
+        // Helpers to derive first/last from full_name when separate fields are missing
+        const deriveFirstName = (full) => {
+          if (!full || typeof full !== "string") return "";
+          const parts = full.trim().split(/\s+/);
+          return parts[0] || "";
+        };
+        const deriveLastName = (full) => {
+          if (!full || typeof full !== "string") return "";
+          const parts = full.trim().split(/\s+/);
+          if (parts.length <= 1) return "";
+          return parts.slice(1).join(" ");
+        };
+
         // Transform profiles data to user format
-        const formattedUsers = profilesData.map((profile) => ({
-          id: profile.id,
-          name: profile.full_name || "Unknown User",
-          email: profile.email || "No email available",
-          avatar: profile.avatar_url,
-          lastActive: profile.updated_at ? new Date(profile.updated_at).toLocaleDateString() : "Unknown",
-        }));
+        const formattedUsers = profilesData.map((profile) => {
+          const firstName = profile.first_name || deriveFirstName(profile.full_name) || "";
+          const lastName = profile.last_name || deriveLastName(profile.full_name) || "";
+          return {
+            id: profile.id,
+            firstName,
+            lastName,
+            email: profile.email || "No email available",
+            avatar: profile.avatar_url,
+            lastActive: profile.updated_at ? new Date(profile.updated_at).toLocaleDateString() : "Unknown",
+          };
+        });
         setUsers(formattedUsers);
       } else {
         // Fallback: try to get from auth.users (might not be accessible due to RLS)
@@ -54,7 +73,8 @@ const UserManagement = () => {
 
   // Filter and paginate users
   const filteredUsers = useMemo(() => {
-    return users.filter((user) => user.name.toLowerCase().includes(searchQuery.toLowerCase()) || user.email.toLowerCase().includes(searchQuery.toLowerCase()));
+    const query = searchQuery.toLowerCase();
+    return users.filter((user) => `${user.firstName || ""} ${user.lastName || ""}`.trim().toLowerCase().includes(query) || (user.email || "").toLowerCase().includes(query));
   }, [users, searchQuery]);
 
   const totalUsers = filteredUsers.length;
@@ -150,46 +170,35 @@ const UserManagement = () => {
             )}
           </div>
         ) : (
-          // Users list
-          <div className="divide-y divide-gray-100">
-            {paginatedUsers.map((user) => (
-              <div
-                key={user.id}
-                className="p-6 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center space-x-4">
-                  {/* Avatar */}
-                  <div className="relative">
-                    {user.avatar ? (
-                      <img
-                        src={user.avatar}
-                        alt={user.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#4a1d1f] to-[#6d2a2d] flex items-center justify-center">
-                        <span className="text-white font-semibold text-lg">{user.name.charAt(0).toUpperCase()}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* User Info */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 truncate">{user.name}</h3>
-                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                      <div className="flex items-center gap-1">
-                        <FiMail className="w-4 h-4" />
+          // Simple table layout
+          <div className="overflow-x-auto">
+            <table className="min-w-full table-auto">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-6 py-3 text-left">First Name</th>
+                  <th className="px-6 py-3 text-left">Last Name</th>
+                  <th className="px-6 py-3 text-left">Email</th>
+                  <th className="px-6 py-3 text-left">Last Active</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-sm">
+                {paginatedUsers.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="hover:bg-gray-50">
+                    <td className="px-6 py-3">{user.firstName || ""}</td>
+                    <td className="px-6 py-3">{user.lastName || ""}</td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <FiMail className="w-4 h-4 text-gray-400" />
                         <span className="truncate">{user.email}</span>
                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Additional Info */}
-                <div className="mt-3 text-xs text-gray-500">
-                  <span>Last active: {user.lastActive}</span>
-                </div>
-              </div>
-            ))}
+                    </td>
+                    <td className="px-6 py-3 text-gray-500">{user.lastActive}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

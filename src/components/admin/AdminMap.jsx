@@ -315,7 +315,7 @@ const AdminMap = () => {
             </div>
           )}
           {/* Floating controls & details panel on the right */}
-          <div className="absolute top-4 right-4 z-[1001] w-[min(92vw,400px)]">
+          <div className="absolute top-4 right-4  w-[min(92vw,400px)] z-10">
             <div className="rounded-2xl border border-gray-200 bg-white/95 backdrop-blur-md p-3 shadow-xl space-y-3 ring-1 ring-white/20">
               <form
                 onSubmit={handleSearch}
