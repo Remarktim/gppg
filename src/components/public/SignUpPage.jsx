@@ -1,9 +1,10 @@
 import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes, FaEye, FaEyeSlash, FaExclamationTriangle, FaCheckCircle } from "react-icons/fa";
+import { FaTimes, FaEye, FaEyeSlash } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
 import { authService, validateEmail, validatePassword } from "../../lib/supabase";
+import toast from "react-hot-toast";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.95 },
@@ -30,8 +31,6 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
     terms: false,
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   const handleChange = (e) => {
@@ -56,9 +55,7 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
       }));
     }
 
-    // Clear general messages
-    if (error) setError("");
-    if (success) setSuccess("");
+    // No general message state; notifications use toasts only
   };
 
   const validateForm = () => {
@@ -109,10 +106,10 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
+    // No general message state; notifications use toasts only
 
     if (!validateForm()) {
+      toast.error("Please fix the errors in the form");
       return;
     }
 
@@ -127,12 +124,19 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
       });
 
       if (authError) {
-        setError(authError);
+        const message = typeof authError === "string" ? authError : authError?.message || "Failed to create account";
+        toast.error(message);
         return;
       }
 
       if (data?.user) {
-        setSuccess("Account created successfully! Please check your email to verify your account.");
+        const metaFirst = data.user.user_metadata?.first_name;
+        const metaFull = data.user.user_metadata?.full_name;
+        const derivedFromMeta = metaFirst || (metaFull ? metaFull.split(" ")[0] : "");
+        const rawFirstName = derivedFromMeta || formData.firstName || "";
+        const firstName = rawFirstName ? rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1) : "Your";
+
+        toast.success(`Welcome, ${firstName}! Please verify your email to continue.`);
         setFormData({
           firstName: "",
           lastName: "",
@@ -149,7 +153,7 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
         }, 2000);
       }
     } catch (err) {
-      setError("An unexpected error occurred. Please try again.");
+      toast.error("An unexpected error occurred. Please try again.");
       console.error("Signup error:", err);
     } finally {
       setIsLoading(false);
@@ -183,25 +187,7 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
               <p className="text-stone-600 mt-1">Join us today!</p>
             </div>
 
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 mb-6">
-                <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
-                <span className="text-sm">{error}</span>
-              </motion.div>
-            )}
-
-            {success && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center gap-2 text-green-700 mb-6">
-                <FaCheckCircle className="text-green-500 flex-shrink-0" />
-                <span className="text-sm">{success}</span>
-              </motion.div>
-            )}
+            {/* Success messages are shown via toasts */}
 
             <form
               onSubmit={handleSubmit}

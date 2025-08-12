@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 // eslint-disable-next-line no-unused-vars
 import { motion, AnimatePresence } from "framer-motion";
-import { FaTimes, FaEye, FaEyeSlash, FaGoogle, FaExclamationTriangle } from "react-icons/fa";
+import { FaTimes, FaEye, FaEyeSlash, FaGoogle } from "react-icons/fa";
 import { GiPangolin } from "react-icons/gi";
 import logo from "../../assets/img/logo.jpg";
 import { authService, validateEmail } from "../../lib/supabase";
+import toast from "react-hot-toast";
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.9 },
@@ -25,7 +26,6 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
 
   const handleInputChange = (e) => {
@@ -43,8 +43,7 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
       }));
     }
 
-    // Clear general error
-    if (error) setError("");
+    // No general error state; errors are surfaced via toasts
   };
 
   const validateForm = () => {
@@ -68,9 +67,8 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-
     if (!validateForm()) {
+      toast.error("Please fix the errors in the form");
       return;
     }
 
@@ -80,7 +78,8 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
       const { data, error: authError } = await authService.signIn(formData.email, formData.password);
 
       if (authError) {
-        setError(authError);
+        const message = typeof authError === "string" ? authError : authError?.message || "Failed to sign in";
+        toast.error(message);
         return;
       }
 
@@ -93,11 +92,20 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
           avatar: data.user.user_metadata?.avatar_url,
         };
 
+        // Derive first name for welcome toast
+        const metaFirst = data.user.user_metadata?.first_name;
+        const metaFull = data.user.user_metadata?.full_name;
+        const derivedFromMeta = metaFirst || (metaFull ? metaFull.split(" ")[0] : "");
+        const derivedFromEmail = (data.user.email || "").split("@")[0] || "there";
+        const rawFirstName = derivedFromMeta || derivedFromEmail;
+        const firstName = rawFirstName ? rawFirstName.charAt(0).toUpperCase() + rawFirstName.slice(1) : "there";
+
         onLogin(userData);
+        toast.success(`Welcome, ${firstName}!`);
         onClose();
       }
     } catch (err) {
-      setError("An unexpected error occurred. Please try again.");
+      toast.error("An unexpected error occurred. Please try again.");
       console.error("Login error:", err);
     } finally {
       setIsLoading(false);
@@ -105,18 +113,18 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
   };
 
   const handleGoogleSignIn = async () => {
-    setError("");
     setIsLoading(true);
 
     try {
       const { error: authError } = await authService.signInWithGoogle();
 
       if (authError) {
-        setError(authError);
+        const message = typeof authError === "string" ? authError : authError?.message || "Failed to sign in with Google";
+        toast.error(message);
       }
       // Note: Google OAuth will redirect, so we don't handle success here
     } catch (err) {
-      setError("Failed to sign in with Google. Please try again.");
+      toast.error("Failed to sign in with Google. Please try again.");
       console.error("Google sign-in error:", err);
     } finally {
       setIsLoading(false);
@@ -165,16 +173,6 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
               </div>
 
               <div className="space-y-4">
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700">
-                    <FaExclamationTriangle className="text-red-500 flex-shrink-0" />
-                    <span className="text-sm">{error}</span>
-                  </motion.div>
-                )}
-
                 <button
                   onClick={handleGoogleSignIn}
                   disabled={isLoading}
