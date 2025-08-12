@@ -147,10 +147,7 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
           terms: false,
         });
 
-        // Switch to login after successful signup
-        setTimeout(() => {
-          onSwitchToLogin();
-        }, 2000);
+        // Do not auto-switch; user will decide next step
       }
     } catch (err) {
       toast.error("An unexpected error occurred. Please try again.");
@@ -168,8 +165,7 @@ const SignUpPage = ({ isOpen, onClose, onSwitchToLogin }) => {
           variants={backdropVariants}
           initial="hidden"
           animate="visible"
-          exit="exit"
-          onClick={onClose}>
+          exit="exit">
           <motion.div
             className="bg-white rounded-4xl shadow-2xl w-full max-w-3xl mx-auto p-8 sm:p-12 relative"
             variants={modalVariants}

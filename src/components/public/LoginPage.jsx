@@ -26,7 +26,6 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
     password: "",
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState({});
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -35,34 +34,27 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
       [name]: value,
     }));
 
-    // Clear field-specific errors when user starts typing
-    if (fieldErrors[name]) {
-      setFieldErrors((prev) => ({
-        ...prev,
-        [name]: "",
-      }));
-    }
-
-    // No general error state; errors are surfaced via toasts
+    // No inline errors; notifications use toasts only
   };
 
   const validateForm = () => {
-    const errors = {};
-
     if (!formData.email.trim()) {
-      errors.email = "Email is required";
-    } else if (!validateEmail(formData.email)) {
-      errors.email = "Please enter a valid email address";
+      toast.error("Email is required");
+      return false;
     }
-
+    if (!validateEmail(formData.email)) {
+      toast.error("Please enter a valid email address");
+      return false;
+    }
     if (!formData.password.trim()) {
-      errors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      errors.password = "Password must be at least 6 characters";
+      toast.error("Password is required");
+      return false;
     }
-
-    setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    if (formData.password.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e) => {
@@ -102,7 +94,6 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
 
         onLogin(userData);
         toast.success(`Welcome, ${firstName}!`);
-        onClose();
       }
     } catch (err) {
       toast.error("An unexpected error occurred. Please try again.");
@@ -139,8 +130,7 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
           variants={backdropVariants}
           initial="hidden"
           animate="visible"
-          exit="exit"
-          onClick={onClose}>
+          exit="exit">
           <motion.div
             className="bg-white rounded-4xl shadow-2xl w-full max-w-4xl mx-auto overflow-hidden flex"
             variants={modalVariants}
@@ -202,20 +192,10 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       id="email"
                       value={formData.email}
                       onChange={handleInputChange}
-                      className={`w-full pl-3 pr-10 py-2 border-b-2 focus:outline-none transition-colors ${
-                        fieldErrors.email ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
-                      }`}
+                      className="w-full pl-3 pr-10 py-2 border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
                       placeholder="Email"
                       required
                     />
-                    {fieldErrors.email && (
-                      <motion.p
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-red-500 text-xs mt-1">
-                        {fieldErrors.email}
-                      </motion.p>
-                    )}
                   </div>
                   <div className="relative">
                     <label
@@ -229,9 +209,7 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       id="password"
                       value={formData.password}
                       onChange={handleInputChange}
-                      className={`w-full pl-3 pr-10 py-2 border-b-2 focus:outline-none transition-colors ${
-                        fieldErrors.password ? "border-red-300 focus:border-red-500" : "border-stone-200 focus:border-stone-800"
-                      }`}
+                      className="w-full pl-3 pr-10 py-2 border-b-2 border-stone-200 focus:border-stone-800 focus:outline-none transition-colors"
                       placeholder="Password"
                       required
                     />
@@ -241,14 +219,6 @@ const LoginPage = ({ isOpen, onClose, onSwitchToSignUp, onSwitchToForgotPassword
                       className="absolute bottom-2 right-2 text-stone-500">
                       {showPassword ? <FaEye /> : <FaEyeSlash />}
                     </button>
-                    {fieldErrors.password && (
-                      <motion.p
-                        initial={{ opacity: 0, y: -5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-red-500 text-xs mt-1">
-                        {fieldErrors.password}
-                      </motion.p>
-                    )}
                   </div>
                   <button
                     type="button"
